@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#05030a">
+  <title>Neon Horizon · Pseudo-3D Racer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #05030a;
+    }
+
+    body {
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    #game {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #05030a;
+    }
+
+    .hud {
+      position: fixed;
+      top: max(18px, env(safe-area-inset-top));
+      left: max(18px, env(safe-area-inset-left));
+      z-index: 10;
+      min-width: 142px;
+      padding: 12px 16px 13px;
+      border: 1px solid rgba(255, 222, 248, 0.1);
+      border-radius: 16px;
+      background: rgba(9, 4, 17, 0.3);
+      color: #fff4ff;
+      text-shadow: 0 1px 10px rgba(255, 30, 142, 0.26);
+      backdrop-filter: blur(9px);
+      -webkit-backdrop-filter: blur(9px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .hud__label {
+      margin-bottom: 2px;
+      color: rgba(255, 227, 250, 0.45);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+    }
+
+    .hud__readout {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+    }
+
+    #speedValue {
+      font-size: clamp(34px, 4.4vw, 48px);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.055em;
+      line-height: 0.95;
+    }
+
+    .hud__unit {
+      color: #6ff7ff;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+    }
+
+    #gearValue {
+      min-width: 18px;
+      margin-left: auto;
+      padding: 2px 5px;
+      border: 1px solid rgba(111, 247, 255, 0.22);
+      border-radius: 5px;
+      color: #6ff7ff;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-align: center;
+    }
+
+    .hud__bar {
+      width: 100%;
+      height: 3px;
+      margin-top: 9px;
+      overflow: hidden;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    #speedBar {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #61f4ff 0%, #ff36a0 72%, #ff8a56 100%);
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: transform 90ms linear;
+    }
+
+    .hud__hint {
+      margin-top: 8px;
+      color: rgba(255, 232, 250, 0.34);
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+    }
+
+    .credits {
+      position: fixed;
+      left: 50%;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 10;
+      transform: translateX(-50%);
+      padding: 7px 14px;
+      border: 1px solid rgba(255, 226, 245, 0.09);
+      border-radius: 999px;
+      background: rgba(10, 4, 18, 0.26);
+      color: rgba(255, 237, 249, 0.54);
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: 0.16em;
+      white-space: nowrap;
+      text-shadow: 0 1px 8px rgba(255, 44, 142, 0.24);
+      backdrop-filter: blur(7px);
+      -webkit-backdrop-filter: blur(7px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @media (max-width: 520px) {
+      .hud {
+        min-width: 124px;
+        padding: 10px 13px 11px;
+      }
+
+      .hud__hint {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Juego de conducción pseudo-3D estilo synthwave"></canvas>
+
+  <section class="hud" aria-label="Velocidad actual">
+    <div class="hud__label">VELOCIDAD</div>
+    <div class="hud__readout">
+      <span id="speedValue">000</span>
+      <span class="hud__unit">KM/H</span>
+      <span id="gearValue">N</span>
+    </div>
+    <div class="hud__bar"><span id="speedBar"></span></div>
+    <div class="hud__hint">WASD · FLECHAS</div>
+  </section>
+
+  <footer class="credits">Creado por @isjustmontes | v0.2.0 beta</footer>
+
+  <script>
+    "use strict";
+
+    (() => {
+      // ---------------------------------------------------------------------
+      // Configuración general
+      // ---------------------------------------------------------------------
+
+      const TAU = Math.PI * 2;
+
+      const CONFIG = Object.freeze({
+        segmentLength: 200,
+        trackSegments: 1600,
+        rumbleSegments: 4,
+        lanes: 3,
+        roadWidth: 2200,
+        drawDistance: 240,
+        cameraHeight: 1000,
+        fieldOfView: 92,
+        maxSpeed: 13200,
+        reverseMaxSpeed: -3200,
+        acceleration: 6000,
+        braking: 16500,
+        reverseAcceleration: 3800,
+        friction: 900,
+        frictionDrag: 0.16,
+        steerSpeed: 1.15,
+        steerLimit: 0.82,
+        kmhScale: 0.0225,
+        maxDelta: 0.05,
+      });
+
+      const ROAD_LENGTH = CONFIG.segmentLength * CONFIG.trackSegments;
+      const HALF_ROAD_WIDTH = CONFIG.roadWidth * 0.5;
+      const CAMERA_DEPTH = 1 / Math.tan((CONFIG.fieldOfView * 0.5) * Math.PI / 180);
+      const PLAYER_Z = CONFIG.cameraHeight * CAMERA_DEPTH;
+
+      const COLORS = Object.freeze({
+        asphalt: ["#14101e", "#1a1527"],
+        rumble: ["#ff2f8f", "#f8edff"],
+        lane: ["rgba(255, 245, 213, 0.94)", "rgba(102, 235, 255, 0.8)"],
+      });
+
+      // ---------------------------------------------------------------------
+      // Canvas, cámara y estado
+      // ---------------------------------------------------------------------
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      const speedValueElement = document.getElementById("speedValue");
+      const gearValueElement = document.getElementById("gearValue");
+      const speedBarElement = document.getElementById("speedBar");
+
+      const view = {
+        width: 0,
+        height: 0,
+        horizon: 0,
+        dpr: 1,
+      };
+
+      const camera = {
+        x: 0,
+        y: 0,
+        z: 0,
+        height: CONFIG.cameraHeight,
+        depth: CAMERA_DEPTH,
+      };
+
+      const state = {
+        elapsed: 0,
+        speed: 0,
+        playerX: 0,
+        carTilt: 0,
+        accelerating: false,
+        braking: false,
+      };
+
+      const keys = new Set();
+      const controlCodes = new Set([
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "KeyW",
+        "KeyA",
+        "KeyS",
+        "KeyD",
+      ]);
+
+      let lastHudSpeed = -1;
+      let lastHudGear = "";
+      let lastHudBar = -1;
+
+      // ---------------------------------------------------------------------
+      // Utilidades
+      // ---------------------------------------------------------------------
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function lerp(start, end, amount) {
+        return start + (end - start) * amount;
+      }
+
+      function smoothStep(value) {
+        const x = clamp(value, 0, 1);
+        return x * x * (3 - 2 * x);
+      }
+
+      function positiveModulo(value, divisor) {
+        return ((value % divisor) + divisor) % divisor;
+      }
+
+      function createRandom(seed) {
+        let value = seed >>> 0;
+        return () => {
+          value += 0x6d2b79f5;
+          let result = Math.imul(value ^ (value >>> 15), 1 | value);
+          result ^= result + Math.imul(result ^ (result >>> 7), 61 | result);
+          return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      // ---------------------------------------------------------------------
+      // Generación procedural del circuito
+      // ---------------------------------------------------------------------
+
+      function elevationAt(index) {
+        const angle = (index / CONFIG.trackSegments) * TAU;
+        return (
+          Math.sin(angle * 2.0 + 0.8) * 900 +
+          Math.sin(angle * 4.0 + 2.2) * 320 +
+          Math.sin(angle * 7.0 + 0.4) * 120
+        );
+      }
+
+      // Entrada y salida suaves para que las curvas no empiecen en seco.
+      function curveEnvelope(t) {
+        const fade = 0.24;
+
+        if (t < fade) {
+          return smoothStep(t / fade);
+        }
+
+        if (t > 1 - fade) {
+          return smoothStep((1 - t) / fade);
+        }
+
+        return 1;
+      }
+
+      function createSegment(index, curve) {
+        const group = Math.floor(index / CONFIG.rumbleSegments);
+        const asphaltGroup = Math.floor(index / (CONFIG.rumbleSegments * 3));
+
+        return {
+          index,
+          curve,
+          z: index * CONFIG.segmentLength,
+          zEnd: (index + 1) * CONFIG.segmentLength,
+          y: 0,
+          yEnd: 0,
+          asphaltColor: COLORS.asphalt[asphaltGroup % COLORS.asphalt.length],
+          rumbleColor: COLORS.rumble[group % COLORS.rumble.length],
+          laneColor: COLORS.lane[group % COLORS.lane.length],
+          laneVisible: Math.floor(index / 3) % 2 === 0,
+          near: null,
+          far: null,
+          nearLeft: null,
+          nearRight: null,
+          farLeft: null,
+          farRight: null,
+        };
+      }
+
+      function generateTrack() {
+        const random = createRandom(0x4e454f4e);
+        const result = new Array(CONFIG.trackSegments);
+        let index = 0;
+
+        while (index < CONFIG.trackSegments) {
+          const remaining = CONFIG.trackSegments - index;
+          const desiredLength =
+            Math.round((26 + random() * 54) / CONFIG.rumbleSegments) *
+            CONFIG.rumbleSegments;
+          const length = Math.min(desiredLength, remaining);
+          const canCurve = index > 48 && remaining > 150;
+
+          let targetCurve = 0;
+
+          if (canCurve && random() > 0.28) {
+            const direction = random() < 0.5 ? -1 : 1;
+            targetCurve = direction * (1.2 + random() * 3.4);
+          }
+
+          for (let offset = 0; offset < length; offset += 1) {
+            const t = length > 1 ? offset / (length - 1) : 0;
+            const curve = targetCurve * curveEnvelope(t);
+            result[index + offset] = createSegment(index + offset, curve);
+          }
+
+          index += length;
+        }
+
+        // Asignamos alturas cerradas y periódicas para que el bucle sea limpio.
+        for (let i = 0; i < result.length; i += 1) {
+          result[i].y = elevationAt(i);
+          result[i].yEnd = elevationAt((i + 1) % CONFIG.trackSegments);
+        }
+
+        return result;
+      }
+
+      const segments = generateTrack();
+
+      const renderSlots = Array.from({ length: CONFIG.drawDistance }, () => ({
+        segment: null,
+        near: null,
+        far: null,
+        nearLeft: null,
+        nearRight: null,
+        farLeft: null,
+        farRight: null,
+      }));
+
+      // ---------------------------------------------------------------------
+      // Estrellas procedurales
+      // ---------------------------------------------------------------------
+
+      const random = createRandom(0x51a7c0de);
+      const stars = Array.from({ length: 110 }, () => ({
+        x: random(),
+        y: random() * 0.82,
+        radius: 0.35 + random() * 1.25,
+        alpha: 0.18 + random() * 0.58,
+        phase: random() * TAU,
+        speed: 0.6 + random() * 1.7,
+      }));
+
+      // ---------------------------------------------------------------------
+      // Redimensionado
+      // ---------------------------------------------------------------------
+
+      function resize() {
+        view.width = Math.max(1, window.innerWidth);
+        view.height = Math.max(1, window.innerHeight);
+        view.horizon = view.height * 0.5;
+        view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.round(view.width * view.dpr);
+        canvas.height = Math.round(view.height * view.dpr);
+
+        // El juego trabaja en píxeles CSS; el DPR se aplica como transformación.
+        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+      }
+
+      window.addEventListener("resize", resize, { passive: true });
+      resize();
+
+      // ---------------------------------------------------------------------
+      // Entrada de teclado
+      // ---------------------------------------------------------------------
+
+      window.addEventListener("keydown", (event) => {
+        if (!controlCodes.has(event.code)) {
+          return;
+        }
+
+        event.preventDefault();
+        keys.add(event.code);
+      });
+
+      window.addEventListener("keyup", (event) => {
+        if (!controlCodes.has(event.code)) {
+          return;
+        }
+
+        event.preventDefault();
+        keys.delete(event.code);
+      });
+
+      window.addEventListener("blur", () => keys.clear());
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          keys.clear();
+        }
+      });
+
+      function isPressed(...codes) {
+        return codes.some((code) => keys.has(code));
+      }
+
+      // ---------------------------------------------------------------------
+      // Proyección pseudo-3D
+      // ---------------------------------------------------------------------
+
+      /**
+       * Proyecta un punto del mundo sobre la pantalla. La cámara lateral y la
+       * Z pueden variar por segmento para acumular curvas y tramos "vueltos".
+       */
+      function project(worldX, worldY, worldZ, cameraX, cameraZ) {
+        const relativeZ = worldZ - cameraZ;
+
+        if (relativeZ <= 1) {
+          return null;
+        }
+
+        const scale = camera.depth / relativeZ;
+        const halfWidth = view.width * 0.5;
+        const halfHeight = view.height * 0.5;
+        const eyeY = camera.y + camera.height;
+
+        return {
+          x: halfWidth + scale * (worldX - cameraX) * halfWidth,
+          y: halfHeight - scale * (worldY - eyeY) * halfHeight,
+          width: scale * CONFIG.roadWidth * halfWidth,
+          scale,
+        };
+      }
+
+      function getPlayerGround() {
+        const trackPosition = positiveModulo(camera.z + PLAYER_Z, ROAD_LENGTH);
+        const index = Math.floor(trackPosition / CONFIG.segmentLength) % CONFIG.trackSegments;
+        const percent = (trackPosition % CONFIG.segmentLength) / CONFIG.segmentLength;
+        const segment = segments[index];
+
+        return {
+          index,
+          segment,
+          percent,
+          y: lerp(segment.y, segment.yEnd, percent),
+        };
+      }
+
+      function buildProjectedRoad() {
+        const baseIndex = Math.floor(camera.z / CONFIG.segmentLength) % CONFIG.trackSegments;
+        const basePercent = (camera.z % CONFIG.segmentLength) / CONFIG.segmentLength;
+        const lateral = state.playerX * HALF_ROAD_WIDTH;
+        const baseSegment = segments[baseIndex];
+
+        // En el sistema clásico, la curva se acumula en X y en dX.
+        let curveX = 0;
+        let curveDX = -(baseSegment.curve * basePercent);
+
+        for (let step = 0; step < CONFIG.drawDistance; step += 1) {
+          const segmentIndex = positiveModulo(baseIndex + step, CONFIG.trackSegments);
+          const segment = segments[segmentIndex];
+          const slot = renderSlots[step];
+          const looped = segmentIndex < baseIndex;
+          const cameraZ = camera.z - (looped ? ROAD_LENGTH : 0);
+
+          const near = project(0, segment.y, segment.z, lateral - curveX, cameraZ);
+          const far = project(
+            0,
+            segment.yEnd,
+            segment.zEnd,
+            lateral - curveX - curveDX,
+            cameraZ
+          );
+
+          curveX += curveDX;
+          curveDX += segment.curve;
+
+          if (!near || !far) {
+            slot.segment = null;
+            continue;
+          }
+
+          // Descartamos segmentos completamente fuera de pantalla.
+          if (
+            Math.min(near.y, far.y) > view.height + 2 ||
+            Math.max(near.y, far.y) < -2
+          ) {
+            slot.segment = null;
+            continue;
+          }
+
+          slot.segment = segment;
+          slot.near = near;
+          slot.far = far;
+          slot.nearLeft = near.x - near.width * 0.5;
+          slot.nearRight = near.x + near.width * 0.5;
+          slot.farLeft = far.x - far.width * 0.5;
+          slot.farRight = far.x + far.width * 0.5;
+
+          segment.near = near;
+          segment.far = far;
+          segment.nearLeft = slot.nearLeft;
+          segment.nearRight = slot.nearRight;
+          segment.farLeft = slot.farLeft;
+          segment.farRight = slot.farRight;
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // Física y actualización
+      // ---------------------------------------------------------------------
+
+      function updateSpeed(dt, accelerate, brake) {
+        if (brake) {
+          if (state.speed > 0) {
+            state.speed = Math.max(0, state.speed - CONFIG.braking * dt);
+          } else {
+            state.speed = Math.max(
+              CONFIG.reverseMaxSpeed,
+              state.speed - CONFIG.reverseAcceleration * dt
+            );
+          }
+        } else if (accelerate) {
+          state.speed = Math.min(
+            CONFIG.maxSpeed,
+            state.speed + CONFIG.acceleration * dt
+          );
+        } else {
+          // Fricción progresiva: a más velocidad, más resistencia.
+          const friction = CONFIG.friction + Math.abs(state.speed) * CONFIG.frictionDrag;
+
+          if (state.speed > 0) {
+            state.speed = Math.max(0, state.speed - friction * dt);
+          } else if (state.speed < 0) {
+            state.speed = Math.min(0, state.speed + friction * dt);
+          }
+        }
+      }
+
+      function updateSteering(dt, steerInput, speedRatio, curve) {
+        const speedAuthority = 0.25 + 0.75 * Math.min(1, Math.abs(state.speed) / 4200);
+
+        if (steerInput !== 0) {
+          state.playerX += steerInput * CONFIG.steerSpeed * speedAuthority * dt;
+        } else {
+          // Retorno suave al centro cuando se suelta la dirección.
+          state.playerX -= state.playerX * Math.min(1, dt * 0.55);
+        }
+
+        // La fuerza centrífuga empuja ligeramente hacia el exterior de la curva.
+        if (Math.abs(state.speed) > 800) {
+          state.playerX -= curve * 0.028 * speedRatio * speedRatio * dt;
+        }
+
+        state.playerX = clamp(state.playerX, -CONFIG.steerLimit, CONFIG.steerLimit);
+      }
+
+      function update(dt) {
+        state.elapsed += dt;
+
+        const accelerate = isPressed("ArrowUp", "KeyW");
+        const brake = isPressed("ArrowDown", "KeyS");
+        const steerInput =
+          (isPressed("ArrowRight", "KeyD") ? 1 : 0) -
+          (isPressed("ArrowLeft", "KeyA") ? 1 : 0);
+
+        state.accelerating = accelerate && !brake;
+        state.braking = brake;
+
+        updateSpeed(dt, accelerate, brake);
+
+        // Avance infinito con módulo sobre la pista procedural.
+        camera.z = positiveModulo(camera.z + state.speed * dt, ROAD_LENGTH);
+
+        const playerGround = getPlayerGround();
+        const speedRatio = clamp(Math.abs(state.speed) / CONFIG.maxSpeed, 0, 1);
+
+        updateSteering(dt, steerInput, speedRatio, playerGround.segment.curve);
+
+        // Altura de cámara relativa al terreno y desplazamiento lateral.
+        camera.y = playerGround.y;
+        camera.x = state.playerX * HALF_ROAD_WIDTH;
+
+        const targetTilt =
+          -steerInput * 0.058 -
+          playerGround.segment.curve * 0.0035 * speedRatio * speedRatio;
+
+        state.carTilt += (targetTilt - state.carTilt) * Math.min(1, dt * 9);
+
+        updateHud();
+      }
+
+      // ---------------------------------------------------------------------
+      // HUD
+      // ---------------------------------------------------------------------
+
+      function updateHud() {
+        const kmh = Math.round(Math.abs(state.speed) * CONFIG.kmhScale);
+
+        if (kmh !== lastHudSpeed) {
+          lastHudSpeed = kmh;
+          speedValueElement.textContent = String(kmh).padStart(3, "0");
+        }
+
+        const gear = state.speed < -30 ? "R" : state.speed > 30 ? "D" : "N";
+
+        if (gear !== lastHudGear) {
+          lastHudGear = gear;
+          gearValueElement.textContent = gear;
+        }
+
+        const bar = Math.round(clamp(Math.abs(state.speed) / CONFIG.maxSpeed, 0, 1) * 100);
+
+        if (bar !== lastHudBar) {
+          lastHudBar = bar;
+          speedBarElement.style.transform = `scaleX(${bar / 100})`;
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // Fondo procedural
+      // ---------------------------------------------------------------------
+
+      function drawSky(time) {
+        const { width, horizon } = view;
+
+        const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+        sky.addColorStop(0.00, "#090617");
+        sky.addColorStop(0.30, "#21103e");
+        sky.addColorStop(0.58, "#5b1b65");
+        sky.addColorStop(0.79, "#b53275");
+        sky.addColorStop(0.92, "#f25b7d");
+        sky.addColorStop(1.00, "#ffb16e");
+
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, width, horizon + 1);
+
+        for (const star of stars) {
+          const x = star.x * width;
+          const y = star.y * horizon;
+          const twinkle = 0.62 + Math.sin(time * star.speed + star.phase) * 0.38;
+
+          ctx.globalAlpha = star.alpha * twinkle;
+          ctx.fillStyle = "#fff7ee";
+          ctx.beginPath();
+          ctx.arc(x, y, star.radius, 0, TAU);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      function drawSun() {
+        const { width, height, horizon } = view;
+        const radius = Math.min(width, height) * 0.165;
+        const centerX = width * 0.5;
+        const centerY = horizon - radius * 0.68;
+
+        const glow = ctx.createRadialGradient(
+          centerX,
+          centerY,
+          radius * 0.45,
+          centerX,
+          centerY,
+          radius * 2.35
+        );
+        glow.addColorStop(0.0, "rgba(255, 82, 151, 0.36)");
+        glow.addColorStop(0.45, "rgba(255, 79, 144, 0.13)");
+        glow.addColorStop(1.0, "rgba(255, 79, 144, 0)");
+
+        ctx.fillStyle = glow;
+        ctx.fillRect(
+          centerX - radius * 2.4,
+          centerY - radius * 2.4,
+          radius * 4.8,
+          radius * 4.8
+        );
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, TAU);
+        ctx.clip();
+
+        const sun = ctx.createLinearGradient(0, centerY - radius, 0, centerY + radius);
+        sun.addColorStop(0.0, "#fff8bb");
+        sun.addColorStop(0.38, "#ffd36b");
+        sun.addColorStop(0.7, "#ff8a58");
+        sun.addColorStop(1.0, "#ff2b83");
+
+        ctx.fillStyle = sun;
+        ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+        ctx.fillStyle = "rgba(21, 7, 37, 0.82)";
+        let bandY = centerY + radius * 0.06;
+
+        for (let band = 0; band < 7; band += 1) {
+          const progress = band / 6;
+          const barHeight = radius * (0.016 + progress * 0.034);
+          const gap = radius * (0.04 + progress * 0.052);
+          ctx.fillRect(centerX - radius, bandY, radius * 2, barHeight);
+          bandY += barHeight + gap;
+        }
+
+        ctx.restore();
+      }
+
+      function drawMountainLayer(amplitude, baseline, color, phase, detail) {
+        const { width, horizon } = view;
+
+        ctx.beginPath();
+        ctx.moveTo(0, horizon + 1);
+
+        for (let x = 0; x <= width + 8; x += 8) {
+          const t = x / width;
+          const wave =
+            Math.sin(t * TAU * 2.0 + phase) * 0.36 +
+            Math.sin(t * TAU * 5.0 + phase * 1.7) * 0.22 +
+            Math.sin(t * TAU * detail + phase * 2.3) * 0.12;
+
+          const height = baseline + Math.max(0, wave + 0.42) * amplitude;
+          ctx.lineTo(x, horizon - height);
+        }
+
+        ctx.lineTo(width, horizon + 1);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+
+      function drawGround() {
+        const { width, height, horizon } = view;
+
+        const ground = ctx.createLinearGradient(0, horizon, 0, height);
+        ground.addColorStop(0.0, "#2c0b41");
+        ground.addColorStop(0.22, "#190923");
+        ground.addColorStop(0.62, "#0b0513");
+        ground.addColorStop(1.0, "#05030a");
+
+        ctx.fillStyle = ground;
+        ctx.fillRect(0, horizon, width, height - horizon);
+
+        const horizonGlow = ctx.createLinearGradient(0, horizon - 2, 0, horizon + 22);
+        horizonGlow.addColorStop(0.0, "rgba(255, 93, 170, 0.62)");
+        horizonGlow.addColorStop(0.32, "rgba(255, 70, 153, 0.14)");
+        horizonGlow.addColorStop(1.0, "rgba(255, 70, 153, 0)");
+
+        ctx.fillStyle = horizonGlow;
+        ctx.fillRect(0, horizon - 2, width, 24);
+      }
+
+      function drawFloorGrid() {
+        const { width, height, horizon } = view;
+        const spacing = 1500;
+        const offset = camera.z % spacing;
+
+        ctx.save();
+        ctx.lineWidth = 1;
+
+        // Líneas transversales del suelo, en movimiento con la cámara.
+        for (let line = 0; line < 28; line += 1) {
+          const distance = PLAYER_Z + line * spacing - offset;
+
+          if (distance <= 100) {
+            continue;
+          }
+
+          const scale = camera.depth / distance;
+          const y = horizon + scale * camera.height * height * 0.5;
+
+          if (y < horizon || y > height + 1) {
+            continue;
+          }
+
+          const fade = Math.max(0, 1 - line / 28);
+          const alpha = 0.03 + 0.07 * fade * fade;
+          ctx.strokeStyle = `rgba(255, 80, 181, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+
+        // Líneas de fuga laterales.
+        const worldLines = [-11000, -7600, -5000, 5000, 7600, 11000];
+
+        for (const worldX of worldLines) {
+          ctx.beginPath();
+
+          for (let step = 0; step <= 32; step += 1) {
+            const distance = PLAYER_Z + step * spacing - offset;
+            const scale = camera.depth / distance;
+            const x = width * 0.5 + scale * (worldX - camera.x) * width * 0.5;
+            const y = horizon + scale * camera.height * height * 0.5;
+
+            if (step === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+
+          const fade = ctx.createLinearGradient(0, horizon, 0, height);
+          fade.addColorStop(0.0, "rgba(255, 80, 181, 0.025)");
+          fade.addColorStop(0.55, "rgba(255, 80, 181, 0.07)");
+          fade.addColorStop(1.0, "rgba(255, 80, 181, 0.1)");
+          ctx.strokeStyle = fade;
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      // ---------------------------------------------------------------------
+      // Dibujo de la carretera
+      // ---------------------------------------------------------------------
+
+      function fillQuad(a, b, c, d, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.lineTo(d.x, d.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawRoadSegment(slot) {
+        if (!slot.segment) {
+          return;
+        }
+
+        const { near, far, nearLeft, nearRight, farLeft, farRight, segment } = slot;
+
+        // Asfalto.
+        fillQuad(
+          { x: nearLeft, y: near.y },
+          { x: nearRight, y: near.y },
+          { x: farRight, y: far.y },
+          { x: farLeft, y: far.y },
+          segment.asphaltColor
+        );
+
+        // Arcenes / kerbs.
+        const kerbNear = near.width * 0.06;
+        const kerbFar = far.width * 0.06;
+
+        fillQuad(
+          { x: nearLeft, y: near.y },
+          { x: nearLeft + kerbNear, y: near.y },
+          { x: farLeft + kerbFar, y: far.y },
+          { x: farLeft, y: far.y },
+          segment.rumbleColor
+        );
+
+        fillQuad(
+          { x: nearRight - kerbNear, y: near.y },
+          { x: nearRight, y: near.y },
+          { x: farRight, y: far.y },
+          { x: farRight - kerbFar, y: far.y },
+          segment.rumbleColor
+        );
+
+        // Líneas discontinuas de los carriles.
+        if (segment.laneVisible) {
+          for (let lane = 1; lane < CONFIG.lanes; lane += 1) {
+            const ratio = lane / CONFIG.lanes;
+            const xNear = nearLeft + near.width * ratio;
+            const xFar = farLeft + far.width * ratio;
+            const halfNear = Math.max(0.75, near.width * 0.0055);
+            const halfFar = Math.max(0.35, far.width * 0.0055);
+
+            fillQuad(
+              { x: xNear - halfNear, y: near.y },
+              { x: xNear + halfNear, y: near.y },
+              { x: xFar + halfFar, y: far.y },
+              { x: xFar - halfFar, y: far.y },
+              segment.laneColor
+            );
+          }
+        }
+      }
+
+      function drawRoad() {
+        // De lejos a cerca para resolver correctamente la profundidad.
+        for (let slotIndex = CONFIG.drawDistance - 1; slotIndex >= 0; slotIndex -= 1) {
+          drawRoadSegment(renderSlots[slotIndex]);
+        }
+      }
+
+      function drawHorizonHaze() {
+        const { width, horizon } = view;
+        const haze = ctx.createLinearGradient(0, horizon - 4, 0, horizon + 80);
+        haze.addColorStop(0.0, "rgba(255, 94, 163, 0.2)");
+        haze.addColorStop(0.3, "rgba(255, 94, 163, 0.08)");
+        haze.addColorStop(1.0, "rgba(255, 94, 163, 0)");
+
+        ctx.fillStyle = haze;
+        ctx.fillRect(0, horizon - 4, width, 84);
+      }
+
+      function drawVignette() {
+        const { width, height } = view;
+        const vignette = ctx.createRadialGradient(
+          width * 0.5,
+          height * 0.48,
+          Math.min(width, height) * 0.27,
+          width * 0.5,
+          height * 0.52,
+          Math.max(width, height) * 0.78
+        );
+        vignette.addColorStop(0.0, "rgba(0, 0, 0, 0)");
+        vignette.addColorStop(0.65, "rgba(0, 0, 0, 0.11)");
+        vignette.addColorStop(1.0, "rgba(0, 0, 0, 0.55)");
+
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      // ---------------------------------------------------------------------
+      // Coche del jugador (100% vectorial)
+      // ---------------------------------------------------------------------
+
+      function roundedRectPath(x, y, width, height, radius) {
+        const r = Math.min(radius, Math.abs(width) * 0.5, Math.abs(height) * 0.5);
+
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + width, y, x + width, y + height, r);
+        ctx.arcTo(x + width, y + height, x, y + height, r);
+        ctx.arcTo(x, y + height, x, y, r);
+        ctx.arcTo(x, y, x + width, y, r);
+        ctx.closePath();
+      }
+
+      function traceCarBody(halfWidth, height) {
+        ctx.beginPath();
+        ctx.moveTo(-halfWidth * 0.86, -height * 0.19);
+        ctx.lineTo(-halfWidth * 0.89, -height * 0.48);
+        ctx.quadraticCurveTo(
+          -halfWidth * 0.88,
+          -height * 0.6,
+          -halfWidth * 0.66,
+          -height * 0.63
+        );
+        ctx.lineTo(halfWidth * 0.66, -height * 0.63);
+        ctx.quadraticCurveTo(
+          halfWidth * 0.88,
+          -height * 0.6,
+          halfWidth * 0.89,
+          -height * 0.48
+        );
+        ctx.lineTo(halfWidth * 0.86, -height * 0.19);
+        ctx.quadraticCurveTo(
+          halfWidth * 0.52,
+          -height * 0.1,
+          0,
+          -height * 0.1
+        );
+        ctx.quadraticCurveTo(
+          -halfWidth * 0.52,
+          -height * 0.1,
+          -halfWidth * 0.86,
+          -height * 0.19
+        );
+        ctx.closePath();
+      }
+
+      function drawPlayerCar() {
+        const speedRatio = clamp(Math.abs(state.speed) / CONFIG.maxSpeed, 0, 1);
+        const carWidth = Math.min(310, Math.max(150, view.width * 0.22));
+        const carHeight = carWidth * 0.56;
+        const halfWidth = carWidth * 0.5;
+        const height = carHeight;
+        const baseY = view.height - Math.max(62, view.height * 0.075);
+        const carX =
+          view.width * 0.5 +
+          (state.playerX / CONFIG.steerLimit) * view.width * 0.035;
+        const vibration = Math.sin(state.elapsed * 27) * (0.18 + speedRatio * 1.05);
+        const suspension = Math.sin(state.elapsed * 12.5) * speedRatio * 1.1;
+        const braking = state.braking;
+        const accelerating = state.accelerating;
+
+        ctx.save();
+        ctx.translate(carX, baseY + vibration + suspension);
+        ctx.rotate(state.carTilt);
+
+        // Sombra y resplandor sobre el asfalto.
+        const shadow = ctx.createRadialGradient(
+          0,
+          -height * 0.02,
+          0,
+          0,
+          -height * 0.02,
+          halfWidth * 1.18
+        );
+        shadow.addColorStop(0, "rgba(0, 0, 0, 0.72)");
+        shadow.addColorStop(0.58, "rgba(0, 0, 0, 0.3)");
+        shadow.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+        ctx.fillStyle = shadow;
+        ctx.beginPath();
+        ctx.ellipse(0, -height * 0.01, halfWidth * 1.12, height * 0.12, 0, 0, TAU);
+        ctx.fill();
+
+        const underglow = ctx.createRadialGradient(
+          0,
+          -height * 0.05,
+          0,
+          0,
+          -height * 0.05,
+          halfWidth * 1.3
+        );
+        underglow.addColorStop(0.0, "rgba(255, 42, 161, 0.44)");
+        underglow.addColorStop(0.45, "rgba(255, 42, 161, 0.15)");
+        underglow.addColorStop(1.0, "rgba(255, 42, 161, 0)");
+
+        ctx.fillStyle = underglow;
+        ctx.beginPath();
+        ctx.ellipse(0, -height * 0.03, halfWidth * 1.25, height * 0.2, 0, 0, TAU);
+        ctx.fill();
+
+        // Ruedas traseras.
+        const wheelWidth = halfWidth * 0.17;
+        const wheelHeight = height * 0.35;
+
+        for (const side of [-1, 1]) {
+          const wheelX = side * halfWidth * 0.83;
+
+          roundedRectPath(
+            wheelX - wheelWidth * 0.5,
+            -height * 0.37,
+            wheelWidth,
+            wheelHeight,
+            wheelWidth * 0.34
+          );
+          ctx.fillStyle = "#06050b";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(104, 240, 255, 0.2)";
+          ctx.lineWidth = Math.max(1, halfWidth * 0.012);
+          ctx.stroke();
+
+          ctx.fillStyle = "#1d1030";
+          ctx.fillRect(
+            wheelX - wheelWidth * 0.16,
+            -height * 0.29,
+            wheelWidth * 0.32,
+            Math.max(1, height * 0.026)
+          );
+        }
+
+        // Difusor y escapes.
+        roundedRectPath(
+          -halfWidth * 0.62,
+          -height * 0.15,
+          halfWidth * 1.24,
+          height * 0.12,
+          halfWidth * 0.03
+        );
+        ctx.fillStyle = "#08060f";
+        ctx.fill();
+
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.arc(side * halfWidth * 0.3, -height * 0.07, halfWidth * 0.055, 0, TAU);
+          ctx.fillStyle = "#05040a";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(141, 108, 255, 0.7)";
+          ctx.lineWidth = Math.max(1, halfWidth * 0.011);
+          ctx.stroke();
+        }
+
+        // Llamas de escape al acelerar.
+        if (accelerating && state.speed > 400 && state.speed < CONFIG.maxSpeed - 100) {
+          const flicker = 0.62 + Math.sin(state.elapsed * 44) * 0.28;
+          const flameLength = height * (0.06 + flicker * 0.055);
+
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+
+          for (const side of [-1, 1]) {
+            const flameX = side * halfWidth * 0.3;
+
+            ctx.fillStyle = `rgba(255, 112, 38, ${0.42 + flicker * 0.3})`;
+            ctx.beginPath();
+            ctx.moveTo(flameX - halfWidth * 0.04, -height * 0.04);
+            ctx.lineTo(flameX + halfWidth * 0.04, -height * 0.04);
+            ctx.lineTo(flameX, flameLength);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = `rgba(126, 238, 255, ${0.45 + flicker * 0.25})`;
+            ctx.beginPath();
+            ctx.moveTo(flameX - halfWidth * 0.018, -height * 0.04);
+            ctx.lineTo(flameX + halfWidth * 0.018, -height * 0.04);
+            ctx.lineTo(flameX, flameLength * 0.55);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
+        // Carrocería principal.
+        const bodyGradient = ctx.createLinearGradient(0, -height * 0.95, 0, -height * 0.08);
+        bodyGradient.addColorStop(0.0, "#ff5eb4");
+        bodyGradient.addColorStop(0.14, "#a21cff");
+        bodyGradient.addColorStop(0.48, "#431068");
+        bodyGradient.addColorStop(0.82, "#1c0a2d");
+        bodyGradient.addColorStop(1.0, "#0c0614");
+
+        traceCarBody(halfWidth, height);
+        ctx.fillStyle = bodyGradient;
+        ctx.fill();
+
+        ctx.save();
+        ctx.shadowColor = "rgba(255, 44, 153, 0.72)";
+        ctx.shadowBlur = halfWidth * 0.11;
+        ctx.strokeStyle = "rgba(255, 81, 182, 0.76)";
+        ctx.lineWidth = Math.max(1, halfWidth * 0.011);
+        traceCarBody(halfWidth, height);
+        ctx.stroke();
+        ctx.restore();
+
+        // Cabina y luneta trasera.
+        ctx.beginPath();
+        ctx.moveTo(-halfWidth * 0.42, -height * 0.62);
+        ctx.quadraticCurveTo(
+          -halfWidth * 0.36,
+          -height * 0.83,
+          -halfWidth * 0.24,
+          -height * 0.91
+        );
+        ctx.lineTo(halfWidth * 0.24, -height * 0.91);
+        ctx.quadraticCurveTo(
+          halfWidth * 0.36,
+          -height * 0.83,
+          halfWidth * 0.42,
+          -height * 0.62
+        );
+        ctx.closePath();
+        ctx.fillStyle = "#170a28";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(101, 242, 255, 0.38)";
+        ctx.lineWidth = Math.max(1, halfWidth * 0.008);
+        ctx.stroke();
+
+        const windowGradient = ctx.createLinearGradient(
+          0,
+          -height * 0.9,
+          0,
+          -height * 0.63
+        );
+        windowGradient.addColorStop(0, "#0e2b48");
+        windowGradient.addColorStop(0.45, "#1b4460");
+        windowGradient.addColorStop(1, "#241236");
+
+        ctx.beginPath();
+        ctx.moveTo(-halfWidth * 0.33, -height * 0.65);
+        ctx.lineTo(-halfWidth * 0.22, -height * 0.87);
+        ctx.lineTo(halfWidth * 0.22, -height * 0.87);
+        ctx.lineTo(halfWidth * 0.33, -height * 0.65);
+        ctx.closePath();
+        ctx.fillStyle = windowGradient;
+        ctx.fill();
+
+        // Reflejo diagonal de la luneta.
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = "#d9fbff";
+        ctx.beginPath();
+        ctx.moveTo(-halfWidth * 0.23, -height * 0.86);
+        ctx.lineTo(-halfWidth * 0.1, -height * 0.86);
+        ctx.lineTo(-halfWidth * 0.25, -height * 0.66);
+        ctx.lineTo(-halfWidth * 0.33, -height * 0.66);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Soporte y alerón trasero.
+        ctx.fillStyle = "#140a22";
+        ctx.fillRect(-halfWidth * 0.42, -height * 0.99, halfWidth * 0.07, height * 0.1);
+        ctx.fillRect(halfWidth * 0.35, -height * 0.99, halfWidth * 0.07, height * 0.1);
+
+        const wingGradient = ctx.createLinearGradient(
+          0,
+          -height * 1.06,
+          0,
+          -height * 0.99
+        );
+        wingGradient.addColorStop(0, "#ff4caf");
+        wingGradient.addColorStop(1, "#251035");
+
+        roundedRectPath(
+          -halfWidth * 0.78,
+          -height * 1.06,
+          halfWidth * 1.56,
+          height * 0.065,
+          halfWidth * 0.022
+        );
+        ctx.fillStyle = wingGradient;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(111, 247, 255, 0.35)";
+        ctx.lineWidth = Math.max(1, halfWidth * 0.008);
+        ctx.stroke();
+
+        // Pilotos traseros.
+        const lightY = -height * 0.53;
+        const lightHeight = height * 0.075;
+
+        ctx.save();
+        ctx.shadowColor = "#ff287e";
+        ctx.shadowBlur = braking ? halfWidth * 0.23 : halfWidth * 0.14;
+        ctx.fillStyle = braking ? "#ff7da8" : "#ff2f83";
+
+        roundedRectPath(
+          -halfWidth * 0.76,
+          lightY,
+          halfWidth * 0.49,
+          lightHeight,
+          lightHeight * 0.4
+        );
+        ctx.fill();
+
+        roundedRectPath(
+          halfWidth * 0.27,
+          lightY,
+          halfWidth * 0.49,
+          lightHeight,
+          lightHeight * 0.4
+        );
+        ctx.fill();
+
+        // Tira central tenue.
+        ctx.globalAlpha = 0.42;
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ff4b9b";
+        ctx.fillRect(
+          -halfWidth * 0.23,
+          lightY + lightHeight * 0.34,
+          halfWidth * 0.46,
+          Math.max(1, lightHeight * 0.22)
+        );
+        ctx.restore();
+
+        // Luna central / matrícula.
+        roundedRectPath(
+          -halfWidth * 0.19,
+          -height * 0.32,
+          halfWidth * 0.38,
+          height * 0.105,
+          halfWidth * 0.018
+        );
+        ctx.fillStyle = "#0b1520";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(111, 247, 255, 0.42)";
+        ctx.lineWidth = Math.max(1, halfWidth * 0.007);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(150, 245, 255, 0.9)";
+        ctx.font = `700 ${Math.max(6, height * 0.07)}px "Segoe UI", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("NEON", 0, -height * 0.266);
+
+        // Detalles inferiores.
+        ctx.strokeStyle = "rgba(102, 235, 255, 0.32)";
+        ctx.lineWidth = Math.max(1, halfWidth * 0.006);
+        ctx.beginPath();
+        ctx.moveTo(-halfWidth * 0.78, -height * 0.19);
+        ctx.lineTo(halfWidth * 0.78, -height * 0.19);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // ---------------------------------------------------------------------
+      // Render principal
+      // ---------------------------------------------------------------------
+
+      function render(time) {
+        const { width, height } = view;
+
+        ctx.clearRect(0, 0, width, height);
+
+        drawSky(time);
+        drawSun();
+        drawMountainLayer(52, 8, "rgba(44, 17, 67, 0.9)", 0.8, 13);
+        drawMountainLayer(30, 4, "rgba(24, 10, 43, 0.96)", 2.1, 9);
+        drawGround();
+        drawFloorGrid();
+
+        buildProjectedRoad();
+        drawRoad();
+        drawHorizonHaze();
+        drawVignette();
+        drawPlayerCar();
+      }
+
+      // ---------------------------------------------------------------------
+      // Game loop
+      // ---------------------------------------------------------------------
+
+      let previousTime = performance.now();
+
+      function frame(now) {
+        const dt = Math.min((now - previousTime) / 1000, CONFIG.maxDelta);
+        previousTime = now;
+
+        update(dt);
+        render(state.elapsed);
+
+        requestAnimationFrame(frame);
+      }
+
+      update(0);
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
